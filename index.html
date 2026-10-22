@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>商业级智能财务看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #4F46E5; --primary-light: #EEF2FF;
+            --bg: #F3F4F6; --card: #FFFFFF;
+            --text-main: #1F2937; --text-sub: #6B7280;
+            --income: #10B981; --expense: #EF4444;
+            --border: #E5E7EB;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg); color: var(--text-main); padding-bottom: 70px; }
+        
+        /* 顶部导航 */
+        .header { background: var(--card); padding: 15px; text-align: center; font-weight: bold; font-size: 18px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center;}
+        .header-title { flex: 1; text-align: left; padding-left: 10px;}
+        .btn-config { font-size: 13px; padding: 5px 10px; background: var(--primary-light); color: var(--primary); border: none; border-radius: 6px; cursor: pointer; font-weight: bold;}
+
+        /* 页面容器 */
+        .page { display: none; padding: 15px; animation: fadeIn 0.3s; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 资产大卡片 */
+        .asset-card { background: linear-gradient(135deg, #4F46E5, #7C3AED); color: white; padding: 20px; border-radius: 16px; margin-bottom: 15px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3); }
+        .asset-label { font-size: 13px; opacity: 0.9; margin-bottom: 5px; }
+        .asset-val { font-size: 32px; font-weight: bold; margin-bottom: 10px; }
+        .asset-sub { display: flex; justify-content: space-between; font-size: 12px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px; }
+
+        /* 表单及向导 */
+        .wizard-step { display: none; background: var(--card); padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 15px;}
+        .wizard-step.active { display: block; }
+        .step-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: var(--primary); border-bottom: 2px solid var(--primary-light); padding-bottom: 8px;}
+        .type-btn-group { display: flex; gap: 10px; margin-bottom: 15px;}
+        .type-btn { flex: 1; padding: 15px; text-align: center; border-radius: 10px; border: 2px solid var(--border); font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s;}
+        .type-btn.active.expense { border-color: var(--expense); background: #FEF2F2; color: var(--expense); }
+        .type-btn.active.income { border-color: var(--income); background: #ECFDF5; color: var(--income); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 13px; color: var(--text-sub); margin-bottom: 8px; font-weight: 500; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: #F9FAFB; outline: none; transition: 0.2s; }
+        input:focus, select:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px var(--primary-light); }
+        .btn-group { display: flex; gap: 10px; margin-top: 20px;}
+        .btn-prev { flex: 1; padding: 14px; background: #E5E7EB; color: var(--text-main); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;}
+        .btn-next { flex: 2; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);}
+
+        /* 分成计算器 */
+        .split-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center;}
+        .split-row input { flex: 1; }
+        .split-row button { background: var(--expense); color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer;}
+        .split-detail-box { background: #F8FAFC; border: 1px solid #CBD5E1; padding: 15px; border-radius: 8px; margin-top: 10px; font-size: 13px; line-height: 1.6;}
+
+        /* 数据看板 */
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px;}
+        .filter-btn { padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--text-sub); font-size: 13px; cursor: pointer; white-space: nowrap;}
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: var(--card); padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .stat-val { font-size: 20px; font-weight: bold; margin-top: 5px; }
+        .stat-label { font-size: 12px; color: var(--text-sub); }
+        .chart-container { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .chart-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; }
+        .canvas-wrapper { position: relative; height: 240px; width: 100%; }
+        .analysis-box { background: #FFFBEB; border: 1px solid #FDE68A; padding: 15px; border-radius: 12px; font-size: 14px; color: #92400E; line-height: 1.6; }
+
+        /* 明细列表 */
+        .record-item { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-left: 4px solid transparent;}
+        .record-item.income { border-left-color: var(--income); }
+        .record-item.expense { border-left-color: var(--expense); }
+        .record-left { flex: 1; }
+        .record-title { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+        .record-desc { font-size: 12px; color: var(--text-sub); }
+        .record-right { text-align: right; }
+        .record-amount { font-size: 18px; font-weight: bold; margin-bottom: 5px;}
+        .btn-del { font-size: 12px; color: var(--expense); padding: 2px 8px; background: #FEF2F2; border-radius: 4px; cursor: pointer; display: inline-block;}
+
+        /* 底部导航 */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: var(--card); display: flex; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 100;}
+        .nav-item { font-size: 12px; color: var(--text-sub); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;}
+        .nav-item.active { color: var(--primary); font-weight: bold; }
+        .nav-icon { font-size: 20px; }
+
+        /* 弹窗 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px;}
+        .modal.active { display: flex; }
+        .modal-content { background: var(--card); width: 100%; max-width: 500px; border-radius: 16px; padding: 20px; max-height: 90vh; overflow-y: auto;}
+        
+        /* 导出按钮组 */
+        .export-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;}
+        .btn-export { padding: 10px; background: #fff; border: 1px solid var(--primary); color: var(--primary); border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: bold; text-align: center;}
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-title">📊 财务中枢</div>
+        <button class="btn-config" onclick="openConfigModal()">⚙️ 初始资金设置</button>
+    </div>
+
+    <!-- 页面1：记一笔 -->
+    <div id="page-add" class="page active">
+        <div id="step-1" class="wizard-step active">
+            <div class="step-title">第 1 步：选择收支类型</div>
+            <div class="type-btn-group">
+                <div class="type-btn active expense" id="btn-type-expense" onclick="selectType('支出')">💸 支出</div>
+                <div class="type-btn income" id="btn-type-income" onclick="selectType('收入')">💰 收入</div>
+            </div>
+            <button class="btn-next" onclick="goStep(2)">下一步</button>
+        </div>
+
+        <div id="step-2" class="wizard-step">
+            <div class="step-title">第 2 步：金额与分类</div>
+            <div class="form-group">
+                <label>金额 (元)</label>
+                <input type="number" id="input-amount" placeholder="0.00" step="0.01" style="font-size: 24px; font-weight: bold; color: var(--primary);">
+            </div>
+            <div class="form-group">
+                <label>业务/生活分类</label>
+                <select id="input-category">
+                    <option value="手机壳膜周边">🔋 手机壳膜周边</option>
+                    <option value="二手手机">📱 二手手机</option>
+                    <option value="打印机服务">🖨️ 打印机服务</option>
+                    <option value="计算机AI">💻 计算机/AI服务</option>
+                    <option value="摆摊合作">🎪 摆摊及合作</option>
+                    <option value="生活开销">🍜 生活开销</option>
+                    <option value="个人提升">📚 个人提升</option>
+                </select>
+            </div>
+            <div class="btn-group">
+                <button class="btn-prev" onclick="goStep(1)">上一步</button>
+                <button class="btn-next" onclick="validateStep2()">下一步</button>
+            </div>
+        </div>
+
+        <div id="step-3" class="wizard-step">
+            <div class="step-title">第 3 步：账户与备注</div>
+            <div class="form-group">
+                <label>账户渠道</label>
+                <select id="input-account"></select>
+            </div>
+            <div class="form-group">
+                <label>日期</label>
+                <input type="date" id="input-date">
+            </div>
+            <div class="form-group">
+                <label>详细备注</label>
+                <textarea id="input-note" rows="2" placeholder="例如：进货苹果壳 20个"></textarea>
+            </div>
+            <div class="btn-group">
+                <button class="btn-prev" onclick="goStep(2)">上一步</button>
+                <button class="btn-next" style="background: var(--income);" onclick="submitRecord()">确认保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页面2：摆摊分成计算器 -->
+    <div id="page-split" class="page">
+        <div class="wizard-step active">
+            <div class="step-title">🎪 摆摊/合作分成计算</div>
+            <div class="form-group">
+                <label>总进账 (营业额)</label>
+                <input type="number" id="split-total" placeholder="总收入金额">
+            </div>
+            <div class="form-group">
+                <label>进账渠道 (谁收的钱)</label>
+                <select id="split-income-account"></select>
+            </div>
+            <div class="form-group">
+                <label>总成本 (进货/摊位费等)</label>
+                <input type="number" id="split-cost" placeholder="总成本金额，无则填0">
+            </div>
+            <div class="form-group">
+                <label>成本扣款渠道</label>
+                <select id="split-cost-account"></select>
+            </div>
+            
+            <div class="step-title" style="font-size: 14px; margin-top:20px;">👥 合伙人比例 (总和需100%)</div>
+            <div id="partners-list"></div>
+            <button onclick="addPartner()" style="width:100%; padding:10px; background:#E5E7EB; border:none; border-radius:8px; margin-bottom:15px; cursor:pointer;">➕ 添加合伙人</button>
+            
+            <button class="btn-next" onclick="calcSplit()">计算分成并生成明细</button>
+            
+            <!-- 分成结果 -->
+            <div id="split-result" style="display:none; margin-top:20px;">
+                <div class="split-detail-box" id="split-detail-text"></div>
+                <button class="btn-next" style="margin-top:15px; background:#10B981;" onclick="saveSplitRecord()">确认无误，批量生成流水</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页面3：数据看板 -->
+    <div id="page-dashboard" class="page">
+        <div class="asset-card">
+            <div class="asset-label">当前总资产 (所有渠道汇总)</div>
+            <div class="asset-val" id="current-total-asset">¥0.00</div>
+            <div class="asset-sub">
+                <span>总利润: <span id="display-profit">0</span></span>
+                <span>总支出: <span id="display-allexpense">0</span></span>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <button class="filter-btn active" onclick="setFilter('today', this)">📅 今天</button>
+            <button class="filter-btn" onclick="setFilter('week', this)">🗓️ 本周</button>
+            <button class="filter-btn" onclick="setFilter('month', this)">📆 本月</button>
+            <button class="filter-btn" onclick="setFilter('all', this)">⏳ 全部</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">区间收入</div>
+                <div class="stat-val" style="color: var(--income)" id="range-income">¥0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">区间支出</div>
+                <div class="stat-val" style="color: var(--expense)" id="range-expense">¥0</div>
+            </div>
+        </div>
+
+        <!-- 图表矩阵 -->
+        <div class="chart-container">
+            <div class="chart-title">📈 收支趋势折线图 (按日)</div>
+            <div class="canvas-wrapper"><canvas id="trendChart"></canvas></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">🏆 各业务净利润对比图 (赚钱主力)</div>
+            <div class="canvas-wrapper"><canvas id="profitChart"></canvas></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">🍩 业务支出占比 (烧钱排行)</div>
+            <div class="canvas-wrapper"><canvas id="categoryChart"></canvas></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">💳 各渠道资金分布 (当前结余)</div>
+            <div class="canvas-wrapper"><canvas id="accountChart"></canvas></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">🕸️ 业务活跃雷达图 (收支规模)</div>
+            <div class="canvas-wrapper"><canvas id="radarChart"></canvas></div>
+        </div>
+
+        <div class="analysis-box" id="analysis-text">正在分析数据...</div>
+    </div>
+
+    <!-- 页面4：明细与导出 -->
+    <div id="page-list" class="page">
+        <div class="export-group">
+            <button class="btn-export" onclick="exportDetailCSV()">📥 导出流水明细 (CSV)</button>
+            <button class="btn-export" onclick="exportSummaryCSV()">📊 导出分类汇总 (CSV)</button>
+            <button class="btn-export" onclick="exportJSON()">💾 全量备份 (JSON)</button>
+            <label class="btn-export" style="margin:0; line-height: 1.2;">
+                📤 导入数据 <input type="file" id="import-file" style="display:none" accept=".json,.csv" onchange="importData(event)">
+            </label>
+        </div>
+        <div id="records-list"></div>
+    </div>
+
+    <!-- 底部导航 -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchPage('add', this)"><span class="nav-icon">📝</span>记一笔</div>
+        <div class="nav-item" onclick="switchPage('split', this)"><span class="nav-icon">🎪</span>分成</div>
+        <div class="nav-item" onclick="switchPage('dashboard', this)"><span class="nav-icon">📊</span>看板</div>
+        <div class="nav-item" onclick="switchPage('list', this)"><span class="nav-icon">📋</span>明细</div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal" id="config-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 15px; font-size: 18px;">⚙️ 渠道与初始余额</h3>
+            <p style="font-size: 12px; color: #666; margin-bottom: 15px;">设置目前各渠道的真实余额，没钱填0。</p>
+            <div id="init-balances-list"></div>
+            <button onclick="addBankCard()" style="width:100%; padding:10px; background:#E5E7EB; border:none; border-radius:8px; margin-bottom:15px; cursor:pointer;">➕ 添加新银行卡</button>
+            <div class="btn-group">
+                <button class="btn-prev" onclick="closeConfigModal()">取消</button>
+                <button class="btn-next" onclick="saveConfig()">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 核心数据 ---
+        let records = JSON.parse(localStorage.getItem('smart_ledger_data')) || [];
+        let initBalances = JSON.parse(localStorage.getItem('smart_ledger_init_balances')) || {
+            "微信1": 0, "微信2": 0, "支付宝": 0, "银行卡1": 0, "现金": 0
+        };
+        let currentType = '支出';
+        let currentFilter = 'today';
+        let charts = {};
+
+        // --- 工具函数 ---
+        function getAllAccounts() { return Object.keys(initBalances); }
+        function renderAccountSelects() {
+            const opts = getAllAccounts().map(a => `<option value="${a}">${a}</option>`).join('');
+            document.getElementById('input-account').innerHTML = opts;
+            document.getElementById('split-income-account').innerHTML = opts;
+            document.getElementById('split-cost-account').innerHTML = opts;
+        }
+        document.getElementById('input-date').valueAsDate = new Date();
+        renderAccountSelects();
+        renderInitBalancesUI();
+
+        // --- 页面切换 ---
+        function switchPage(pageId, navElement) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            navElement.classList.add('active');
+
+            if (pageId === 'dashboard') renderDashboard();
+            else if (pageId === 'list') renderList();
+            else if (pageId === 'add') goStep(1);
+        }
+
+        // --- 记账向导 ---
+        function goStep(step) {
+            document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-' + step).classList.add('active');
+        }
+        function selectType(type) {
+            currentType = type;
+            document.getElementById('btn-type-expense').className = type === '支出' ? 'type-btn active expense' : 'type-btn expense';
+            document.getElementById('btn-type-income').className = type === '收入' ? 'type-btn active income' : 'type-btn income';
+        }
+        function validateStep2() {
+            if (!document.getElementById('input-amount').value) return alert('请输入金额');
+            goStep(3);
+        }
+        function submitRecord() {
+            records.unshift({
+                id: Date.now().toString(),
+                type: currentType,
+                amount: parseFloat(document.getElementById('input-amount').value),
+                category: document.getElementById('input-category').value,
+                account: document.getElementById('input-account').value,
+                date: document.getElementById('input-date').value,
+                note: document.getElementById('input-note').value
+            });
+            saveData();
+            alert('记账成功');
+            document.getElementById('input-amount').value = '';
+            document.getElementById('input-note').value = '';
+            switchPage('dashboard', document.querySelectorAll('.nav-item')[2]);
+        }
+
+        // --- 分成计算器 ---
+        let partnerCount = 0;
+        function addPartner(name = '', percent = '') {
+            partnerCount++;
+            const div = document.createElement('div');
+            div.className = 'split-row';
+            div.id = `partner-${partnerCount}`;
+            div.innerHTML = `
+                <input type="text" placeholder="名字" class="p-name" value="${name}">
+                <input type="number" placeholder="比例(%)" class="p-percent" value="${percent}" style="max-width: 90px;">
+                <button onclick="this.parentElement.remove()">X</button>
+            `;
+            document.getElementById('partners-list').appendChild(div);
+        }
+        addPartner('我', 50);
+
+        let currentSplitResult = null;
+        function calcSplit() {
+            const total = parseFloat(document.getElementById('split-total').value) || 0;
+            const cost = parseFloat(document.getElementById('split-cost').value) || 0;
+            const rows = document.querySelectorAll('.split-row');
+            
+            let percentSum = 0;
+            let partners = [];
+            rows.forEach(r => {
+                const name = r.querySelector('.p-name').value || '匿名';
+                const pct = parseFloat(r.querySelector('.p-percent').value) || 0;
+                percentSum += pct;
+                partners.push({ name, pct });
+            });
+
+            if (Math.abs(percentSum - 100) > 0.01) return alert('比例总和必须等于100%！当前是：' + percentSum + '%');
+            const profit = total - cost;
+            if (profit < 0) return alert('总进账不足以覆盖成本，无法按比例分成！');
+
+            let resultHtml = `
+                <div style="font-weight:bold; border-bottom:1px solid #ccc; padding-bottom:5px; margin-bottom:5px;">📋 结算账单明细</div>
+                <div>总进账：<span style="color:var(--income)">+¥${total.toFixed(2)}</span></div>
+                <div>扣成本：<span style="color:var(--expense)">-¥${cost.toFixed(2)}</span></div>
+                <div style="font-weight:bold; margin-bottom:10px;">净利润：¥${profit.toFixed(2)}</div>
+                <div style="font-weight:bold; border-bottom:1px dashed #ccc; padding-bottom:5px; margin-bottom:5px;">👥 个人分成</div>
+            `;
+            
+            partners.forEach(p => {
+                const amount = profit * (p.pct / 100);
+                resultHtml += `<div>${p.name} (${p.pct}%)：<b>¥${amount.toFixed(2)}</b></div>`;
+                p.amount = amount;
+            });
+
+            document.getElementById('split-detail-text').innerHTML = resultHtml;
+            document.getElementById('split-result').style.display = 'block';
+            currentSplitResult = { total, cost, profit, partners, 
+                incAcc: document.getElementById('split-income-account').value,
+                costAcc: document.getElementById('split-cost-account').value,
+                date: new Date().toISOString().split('T')[0] };
+        }
+
+        function saveSplitRecord() {
+            if (!currentSplitResult) return;
+            const { total, cost, partners, incAcc, costAcc, date } = currentSplitResult;
+            const batchId = 'split_' + Date.now();
+
+            // 1. 记总营收
+            records.unshift({ id: batchId+'_inc', type: '收入', amount: total, category: '摆摊合作', account: incAcc, date: date, note: '摆摊合作总营收' });
+            // 2. 记总成本
+            if (cost > 0) records.unshift({ id: batchId+'_cost', type: '支出', amount: cost, category: '摆摊合作', account: costAcc, date: date, note: '摆摊合作总成本' });
+            // 3. 分给别人的钱
+            partners.forEach((p, i) => {
+                if (p.name !== '我' && p.amount > 0) {
+                    records.unshift({ id: batchId+'_' + i, type: '支出', amount: p.amount, category: '摆摊合作', account: incAcc, date: date, note: `分给合伙人：${p.name} (${p.pct}%)` });
+                }
+            });
+
+            saveData();
+            alert('分成流水已入库！');
+            document.getElementById('split-result').style.display = 'none';
+            switchPage('dashboard', document.querySelectorAll('.nav-item')[2]);
+        }
+
+        // --- 设置 ---
+        function renderInitBalancesUI() {
+            const list = document.getElementById('init-balances-list');
+            list.innerHTML = '';
+            for (let acc in initBalances) {
+                list.innerHTML += `
+                    <div class="form-group" style="display:flex; align-items:center; justify-content:space-between;">
+                        <label style="margin:0;">${acc}</label>
+                        <input type="number" class="init-input" data-acc="${acc}" value="${initBalances[acc]}" step="0.01" style="width:120px;">
+                    </div>`;
+            }
+        }
+        function addBankCard() {
+            const newCardName = `银行卡${Object.keys(initBalances).filter(k => k.includes('银行卡')).length + 1}`;
+            initBalances[newCardName] = 0;
+            renderInitBalancesUI();
+        }
+        function openConfigModal() { document.getElementById('config-modal').classList.add('active'); }
+        function closeConfigModal() { document.getElementById('config-modal').classList.remove('active'); }
+        function saveConfig() {
+            document.querySelectorAll('.init-input').forEach(input => {
+                initBalances[input.getAttribute('data-acc')] = parseFloat(input.value) || 0;
+            });
+            localStorage.setItem('smart_ledger_init_balances', JSON.stringify(initBalances));
+            renderAccountSelects();
+            closeConfigModal();
+            renderDashboard();
+        }
+
+        // --- 核心看板与图表 ---
+        function getFilteredRecords() {
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
+            const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+            const startOfWeekStr = new Date(now.getTime() - (dayOfWeek - 1) * 86400000).toISOString().split('T')[0];
+            const startOfMonthStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+            return records.filter(r => {
+                if (currentFilter === 'today') return r.date === todayStr;
+                if (currentFilter === 'week') return r.date >= startOfWeekStr && r.date <= todayStr;
+                if (currentFilter === 'month') return r.date >= startOfMonthStr && r.date <= todayStr;
+                return true;
+            });
+        }
+
+        function setFilter(type, btn) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderDashboard();
+        }
+
+        function renderDashboard() {
+            const filtered = getFilteredRecords();
+            
+            // 数据计算
+            let rIncome = 0, rExpense = 0;
+            let catData = {}; 
+            let dailyData = {}; 
+            let catProfit = {}; // 业务利润
+            let catIncome = {}; // 业务收入
+            let accBalance = { ...initBalances };
+
+            // 计算总账户余额
+            records.forEach(r => {
+                if (r.type === '收入') accBalance[r.account] = (accBalance[r.account] || 0) + r.amount;
+                else accBalance[r.account] = (accBalance[r.account] || 0) - r.amount;
+            });
+
+            // 计算区间数据
+            filtered.forEach(r => {
+                if (r.type === '收入') { rIncome += r.amount; catIncome[r.category] = (catIncome[r.category]||0) + r.amount; }
+                else { rExpense += r.amount; catData[r.category] = (catData[r.category]||0) + r.amount; }
+
+                dailyData[r.date] = dailyData[r.date] || { inc: 0, exp: 0 };
+                if (r.type === '收入') dailyData[r.date].inc += r.amount;
+                else dailyData[r.date].exp += r.amount;
+
+                catProfit[r.category] = catProfit[r.category] || 0;
+                catProfit[r.category] += (r.type === '收入' ? r.amount : -r.amount);
+            });
+
+            // 全局资产
+            let totalAsset = Object.values(initBalances).reduce((a, b) => a + b, 0);
+            records.forEach(r => totalAsset += r.type === '收入' ? r.amount : -r.amount);
+
+            // 文本更新
+            document.getElementById('current-total-asset').innerText = '¥' + totalAsset.toFixed(2);
+            document.getElementById('display-profit').innerText = '¥' + (rIncome - rExpense).toFixed(2);
+            document.getElementById('display-allexpense').innerText = '¥' + rExpense.toFixed(2);
+            document.getElementById('range-income').innerText = '¥' + rIncome.toFixed(2);
+            document.getElementById('range-expense').innerText = '¥' + rExpense.toFixed(2);
+
+            // --- 销毁旧图表 ---
+            Object.values(charts).forEach(c => c.destroy());
+
+            // 1. 折线图
+            const sortedDates = Object.keys(dailyData).sort();
+            charts.trend = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [
+                        { label: '收入', data: sortedDates.map(d => dailyData[d].inc), borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.3 },
+                        { label: '支出', data: sortedDates.map(d => dailyData[d].exp), borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.3 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 2. 净利润对比图
+            let profitLabels = Object.keys(catProfit);
+            let profitData = Object.values(catProfit);
+            charts.profit = new Chart(document.getElementById('profitChart'), {
+                type: 'bar',
+                data: {
+                    labels: profitLabels,
+                    datasets: [{ label: '净利润', data: profitData, backgroundColor: profitData.map(v => v >= 0 ? '#10B981' : '#EF4444'), borderRadius: 4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 3. 支出环形图
+            charts.doughnut = new Chart(document.getElementById('categoryChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(catData),
+                    datasets: [{ data: Object.values(catData), backgroundColor: ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+            });
+
+            // 4. 渠道资金柱状图
+            charts.bar = new Chart(document.getElementById('accountChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(accBalance),
+                    datasets: [{ label: '余额', data: Object.values(accBalance), backgroundColor: '#4F46E5', borderRadius: 6 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 5. 雷达图 (对比各业务收支规模)
+            let radarLabels = Array.from(new Set([...Object.keys(catIncome), ...Object.keys(catData)]));
+            charts.radar = new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: radarLabels,
+                    datasets: [
+                        { label: '收入', data: radarLabels.map(l => catIncome[l]||0), backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: '#10B981', pointBackgroundColor: '#10B981' },
+                        { label: '支出', data: radarLabels.map(l => catData[l]||0), backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: '#EF4444', pointBackgroundColor: '#EF4444' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            generateAnalysis(catData, catProfit, rExpense);
+        }
+
+        function generateAnalysis(catData, catProfit, rExpense) {
+            const textBox = document.getElementById('analysis-text');
+            let catArr = Object.entries(catData).sort((a, b) => b[1] - a[1]);
+            let profitArr = Object.entries(catProfit).sort((a, b) => b[1] - a[1]);
+
+            if (catArr.length === 0) { textBox.innerHTML = "💡 当前区间无支出数据。"; return; }
+
+            let txt = `💡 <b>财务分析师建议：</b><br>`;
+            if (catArr.length > 0) {
+                let pct = rExpense > 0 ? ((catArr[0][1] / rExpense) * 100).toFixed(1) : 0;
+                txt += `1. 你的最大开销是 <b>【${catArr[0][0]}】</b>，占比达 <b>${pct}%</b>。<br>`;
+            }
+            if (profitArr.length > 0) {
+                txt += `2. 最赚钱的业务是 <b>【${profitArr[0][0]}】</b>，创造净利润 ¥${profitArr[0][1].toFixed(2)}。<br>`;
+            }
+            const lossArr = profitArr.filter(i => i[1] < 0);
+            if(lossArr.length > 0) {
+                txt += `3. ⚠️ 注意：当前有亏损业务 <b>【${lossArr.map(i=>i[0]).join(', ')}】</b>，请核查是进货积压还是正常折损。`;
+            }
+            textBox.innerHTML = txt;
+        }
+
+        // --- 明细列表 (已修复删除按钮) ---
+        function renderList() {
+            const listDiv = document.getElementById('records-list');
+            listDiv.innerHTML = records.length ? '' : '<div style="text-align:center; color:#999;">暂无记录</div>';
+            
+            // 倒序展示
+            records.forEach(r => {
+                const isExp = r.type === '支出';
+                listDiv.innerHTML += `
+                    <div class="record-item ${isExp ? 'expense' : 'income'}">
+                        <div class="record-left">
+                            <div class="record-title">${r.category}</div>
+                            <div class="record-desc">${r.date} | ${r.account}<br>${r.note || ''}</div>
+                        </div>
+                        <div class="record-right">
+                            <div class="record-amount" style="color: ${isExp ? 'var(--expense)' : 'var(--income)'}">${isExp?'-':'+'}${r.amount.toFixed(2)}</div>
+                            <div class="btn-del" onclick="deleteRecord('${r.id}')">删除</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function deleteRecord(id) {
+            if (confirm('⚠️ 确定要删除这条记录吗？删除后无法恢复。')) {
+                records = records.filter(r => r.id !== id);
+                saveData();
+                renderList();
+                if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+            }
+        }
+
+        // --- 数据导入导出 ---
+        // 1. 导出流水明细 CSV
+        function exportDetailCSV() {
+            if (records.length === 0) return alert('无数据可导出');
+            let csv = "日期,类型,分类,金额,账户,备注\n";
+            records.forEach(r => { csv += `${r.date},${r.type},${r.category},${r.amount},${r.account},"${r.note}"\n`; });
+            downloadBlob(csv, `流水明细_${new Date().getTime()}.csv`);
+        }
+
+        // 2. 导出分类汇总 CSV
+        function exportSummaryCSV() {
+            if (records.length === 0) return alert('无数据可导出');
+            let summary = {};
+            records.forEach(r => {
+                if (!summary[r.category]) summary[r.category] = { inc: 0, exp: 0 };
+                if (r.type === '收入') summary[r.category].inc += r.amount;
+                else summary[r.category].exp += r.amount;
+            });
+            
+            let csv = "业务分类,总收入,总支出,净利润\n";
+            for(let cat in summary) {
+                let inc = summary[cat].inc;
+                let exp = summary[cat].exp;
+                csv += `${cat},${inc.toFixed(2)},${exp.toFixed(2)},${(inc - exp).toFixed(2)}\n`;
+            }
+            downloadBlob(csv, `分类汇总报表_${new Date().getTime()}.csv`);
+        }
+
+        // 3. 全量 JSON 备份
+        function exportJSON() {
+            const dataStr = JSON.stringify({ records: records, initBalances: initBalances });
+            downloadBlob(dataStr, `全量备份_${new Date().getTime()}.json`);
+        }
+
+        function downloadBlob(content, filename) {
+            const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' }); // BOM 头防止 Excel 乱码
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                if (file.name.endsWith('.json')) {
+                    try {
+                        const data = JSON.parse(content);
+                        if (data.records) {
+                            records = data.records;
+                            if (data.initBalances) initBalances = data.initBalances;
+                            alert('JSON恢复成功'); location.reload();
+                        }
+                    } catch (err) { alert('JSON解析失败'); }
+                } else if (file.name.endsWith('.csv')) {
+                    try {
+                        let csvText = content.replace(/^\uFEFF/, '');
+                        const lines = csvText.split('\n');
+                        let count = 0;
+                        for (let i = 1; i < lines.length; i++) {
+                            if (!lines[i].trim()) continue;
+                            const parts = lines[i].split(',');
+                            if (parts.length >= 5) {
+                                records.push({
+                                    id: 'csv_' + Date.now() + '_' + i,
+                                    date: parts[0], type: parts[1], category: parts[2],
+                                    amount: parseFloat(parts[3]) || 0, account: parts[4],
+                                    note: parts[5] ? parts[5].replace(/"/g, '') : ''
+                                });
+                                count++;
+                            }
+                        }
+                        saveData(); alert(`成功导入 ${count} 条CSV数据`); location.reload();
+                    } catch (err) { alert('CSV解析失败'); }
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function saveData() { localStorage.setItem('smart_ledger_data', JSON.stringify(records)); }
+    </script>
+</body>
+</html>
